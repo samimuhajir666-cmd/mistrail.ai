@@ -1,4 +1,18 @@
-.env
-temp_audio.wav
+# Python environment & cache
 __pycache__/
-*.pyc
+*.py[cod]
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+
+# Pipeline / Temp audio outputs (Taake heavy wav files git mein na jayen)
+pipeline_output/
+*.wav
+*.mp3
+
+# IDE files
+.vscode/
+.DS_Store
