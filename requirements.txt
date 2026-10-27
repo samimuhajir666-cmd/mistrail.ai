@@ -5,3 +5,4 @@ numpy
 openai-whisper
 torch
 torchaudio
+speechbrain
