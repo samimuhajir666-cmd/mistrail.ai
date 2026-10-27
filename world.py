@@ -5,14 +5,23 @@ import numpy as np
 import soundfile as sf
 import streamlit as st
 import whisper
+import torch
+import torchaudio
+
+# Try importing SpeechBrain
+try:
+    from speechbrain.inference.enhancement import SpectralMaskEnhancement
+    HAS_SPEECHBRAIN = True
+except ImportError:
+    HAS_SPEECHBRAIN = False
 
 # Page Configuration
 st.set_page_config(
     page_title="AI Audio Studio - Senior Task", page_icon="🎙️", layout="wide"
 )
 
-st.title("🎙️ Audio Cleaning & Whisper STT Comparison")
-st.write("Senior Task: Check Original vs Cleaned Transcription")
+st.title("🎙️ Audio Cleaning & Whisper STT Comparison (SpeechBrain + Noisereduce)")
+st.write("Senior Task: Compare Original vs AI-Enhanced/Cleaned Transcription")
 
 os.makedirs("pipeline_output", exist_ok=True)
 
@@ -21,7 +30,27 @@ os.makedirs("pipeline_output", exist_ok=True)
 def load_whisper_model():
     return whisper.load_model("base")
 
+# Cache the SpeechBrain model so it loads only once
+@st.cache_resource
+def load_speechbrain_enhancer():
+    if HAS_SPEECHBRAIN:
+        try:
+            return SpectralMaskEnhancement.from_hparams(
+                source="speechbrain/metricgan-plus-voicebank"
+            )
+        except Exception as e:
+            st.warning(f"Could not load SpeechBrain model: {e}")
+            return None
+    return None
+
 model = load_whisper_model()
+sb_enhancer = load_speechbrain_enhancer()
+
+# Sidebar / UI Option to select cleaning engine
+cleaning_method = st.radio(
+    "Choose Noise Cleaning Engine:",
+    ["🧹 Traditional NoiseReduce", "🧠 SpeechBrain AI (MetricGAN+)"]
+)
 
 # Input Section
 input_method = st.radio(
@@ -51,27 +80,37 @@ if audio_file is not None:
     if st.button("🚀 Run Cleaning & STT Pipeline"):
         
         # --- STAGE 1: TRANSCRIBE ORIGINAL (NOISY) AUDIO ---
-        with st.spinner("🤖 Transcribing Original Noisy Audio (This shows the 'Before' result)..."):
+        with st.spinner("🤖 Transcribing Original Noisy Audio (Before)..."):
             try:
-                # Original audio ka transcript nikalna
                 original_result = model.transcribe(raw_path, language="en", fp16=False)
                 original_transcript = original_result["text"].strip()
             except Exception as e:
                 st.error(f"Whisper Error on Original Audio: {e}")
                 original_transcript = "Error generating transcript."
 
-        # --- STAGE 2: AUDIO CLEANING (Noise Reduction) ---
-        with st.spinner("🧹 Applying Noise Reduction..."):
+        # --- STAGE 2: AUDIO CLEANING (SpeechBrain or NoiseReduce) ---
+        with st.spinner(f"🧹 Applying {cleaning_method}..."):
             try:
-                data, rate = sf.read(raw_path)
-                if data.ndim > 1:
-                    data = np.mean(data, axis=1)
+                if "SpeechBrain" in cleaning_method and HAS_SPEECHBRAIN and sb_enhancer is not None:
+                    # Run SpeechBrain AI Enhancement
+                    enhanced_speech = sb_enhancer.enhance_file(raw_path)
+                    enhanced_np = enhanced_speech.squeeze(0).cpu().numpy()
+                    sf.write(cleaned_path, enhanced_np, 16000)
+                    st.success("✨ SpeechBrain AI Enhancement completed successfully!")
+                else:
+                    if "SpeechBrain" in cleaning_method and not HAS_SPEECHBRAIN:
+                        st.warning("SpeechBrain library not installed. Falling back to NoiseReduce.")
+                    
+                    # Fallback / Traditional NoiseReduce
+                    data, rate = sf.read(raw_path)
+                    if data.ndim > 1:    
+                        data = np.mean(data, axis=1)
 
-                cleaned_data = nr.reduce_noise(
-                    y=data.astype(np.float32), sr=rate, prop_decrease=0.85
-                )
-                sf.write(cleaned_path, cleaned_data, rate)
-                st.success("✨ Audio cleaning completed successfully!")
+                    cleaned_data = nr.reduce_noise(
+                        y=data.astype(np.float32), sr=rate, prop_decrease=0.85
+                    )
+                    sf.write(cleaned_path, cleaned_data, rate)
+                    st.success("✨ Traditional NoiseReduce completed successfully!")
                 
                 st.markdown("### 🎧 Cleaned Audio")
                 st.audio(cleaned_path, format="audio/wav")
@@ -80,9 +119,8 @@ if audio_file is not None:
                 cleaned_path = raw_path
 
         # --- STAGE 3: TRANSCRIBE CLEANED AUDIO ---
-        with st.spinner("🤖 Transcribing Cleaned Audio (This is the 'After' result)..."):
+        with st.spinner("🤖 Transcribing Cleaned Audio (After)..."):
             try:
-                # Cleaned audio ka transcript nikalna
                 cleaned_result = model.transcribe(cleaned_path, language="en", fp16=False)
                 cleaned_transcript = cleaned_result["text"].strip()
             except Exception as e:
@@ -103,4 +141,4 @@ if audio_file is not None:
             st.markdown("#### ✅ After (Cleaned Audio)")
             st.text_area("Transcript from Cleaned Audio:", value=cleaned_transcript, height=200, key="cleaned_text")
 
-        st.info("💡 **Analysis Tip:** Compare both texts above. If the 'Cleaned' text has more correct words and fewer weird sentences, the Noise Reduction worked perfectly!")
+        st.info("💡 **Analysis Tip:** Compare both texts above to see how much word accuracy SpeechBrain or NoiseReduce adds!")
