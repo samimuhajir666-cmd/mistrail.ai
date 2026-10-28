@@ -1,35 +1,12 @@
-# --- Python Virtual Environment ---
 venv/
 env/
 .venv/
-
-# --- Python Cache & Compiled Files ---
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-
-# --- Audio Output & Recording Folders (Jo code run hone par bantay hain) ---
 pipeline_output/
-deepfilter_recordings/
-demucs_recordings/
-hush_recordings/
-nvidia_recordings/
-pretrained_models/
-torch_recordings/
-speechbrain_recordings/
-
-# --- Individual Audio Files ---
 *.wav
 *.mp3
-*.m4a
-
-# --- Environment Variables & Secrets ---
 .env
-
-# --- IDE & OS Specific Files ---
 .vscode/
 .idea/
 .DS_Store
-Thumbs.db
