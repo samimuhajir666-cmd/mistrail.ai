@@ -1,12 +1,8 @@
 streamlit
-noisereduce
-soundfile
-numpy
 openai-whisper
 torch
 torchaudio
-speechbrain
+soundfile
 librosa
 pandas
-deepfilternet
-pyannote.audio
+numpy
