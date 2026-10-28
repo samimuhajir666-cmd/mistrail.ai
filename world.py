@@ -1,12 +1,20 @@
 from datetime import datetime
 import os
-import noisereduce as nr
 import numpy as np
 import soundfile as sf
 import streamlit as st
 import torch
 import torchaudio
 import whisper
+
+# Try importing DeepFilterNet safely
+try:
+  from df.enhance import enhance, init_df
+  from df.io import load_audio, save_audio
+
+  HAS_DEEPFILTER = True
+except ImportError:
+  HAS_DEEPFILTER = False
 
 # Try importing SpeechBrain safely
 try:
@@ -18,27 +26,40 @@ except ImportError:
 
 # Page Configuration
 st.set_page_config(
-    page_title="AI Audio Studio - Senior Task Pipeline",
+    page_title="AI Audio Studio - Complete Order-Booking Pipeline",
     page_icon="🎙️",
     layout="wide",
 )
 
-st.title("🎙️ Dual-Layer Audio Cleaning & Whisper STT Pipeline")
+st.title("🎙️ Dual-Layer AI Pipeline + Context-Aware Whisper STT")
 st.write(
-    "Senior Task: NoiseReduce + SpeechBrain AI Enhancement ➔ Local Whisper STT"
-    " Comparison"
+    "DeepFilterNet (Noise Suppression) ➔ SpeechBrain (Enhancement) ➔ Smart"
+    " Whisper STT"
 )
 
 os.makedirs("pipeline_output", exist_ok=True)
 
 
-# Cache the whisper model so it doesn't reload every time
+# Cache Whisper Model
 @st.cache_resource
 def load_whisper_model():
   return whisper.load_model("base")
 
 
-# Cache the SpeechBrain model so it loads only once
+# Cache DeepFilterNet Model
+@st.cache_resource
+def load_deepfilter_model():
+  if HAS_DEEPFILTER:
+    try:
+      model, df_state, _ = init_df()
+      return model, df_state
+    except Exception as e:
+      st.warning(f"Could not load DeepFilterNet model: {e}")
+      return None, None
+  return None, None
+
+
+# Cache SpeechBrain Model
 @st.cache_resource
 def load_speechbrain_enhancer():
   if HAS_SPEECHBRAIN:
@@ -48,12 +69,15 @@ def load_speechbrain_enhancer():
       )
     except Exception as e:
       st.warning(f"Could not load SpeechBrain model: {e}")
-      return None
-  return None
+      return None, None
+  return None, None
 
 
-with st.spinner("⏳ Loading AI models into memory..."):
-  model = load_whisper_model()
+with st.spinner(
+    "⏳ Loading AI models into memory (DeepFilter + SpeechBrain + Whisper)..."
+):
+  whisper_model = load_whisper_model()
+  df_model, df_state = load_deepfilter_model()
   sb_enhancer = load_speechbrain_enhancer()
 
 # Input Section
@@ -74,7 +98,7 @@ else:
 if audio_file is not None:
   timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
   raw_path = f"pipeline_output/raw_{timestamp}.wav"
-  step1_path = f"pipeline_output/step1_cleaned_{timestamp}.wav"
+  step1_path = f"pipeline_output/layer1_deepfiltered_{timestamp}.wav"
   cleaned_path = f"pipeline_output/fully_polished_{timestamp}.wav"
 
   # Save raw audio safely
@@ -84,68 +108,78 @@ if audio_file is not None:
   st.markdown("### 🔊 Original Noisy Audio")
   st.audio(raw_path, format="audio/wav")
 
-  if st.button("🚀 Run Dual-Layer AI Pipeline"):
+  if st.button("🚀 Run Complete AI Pipeline"):
     # --- STAGE 1: TRANSCRIBE ORIGINAL (BEFORE) ---
     with st.spinner("🤖 Transcribing Original Noisy Audio (Before Result)..."):
       try:
-        original_result = model.transcribe(raw_path, language="en", fp16=False)
+        original_result = whisper_model.transcribe(
+            raw_path, language="en", fp16=False
+        )
         original_transcript = original_result["text"].strip()
       except Exception as e:
         st.error(f"Whisper Error on Original Audio: {e}")
         original_transcript = "Error generating transcript."
 
-    # --- STAGE 2: DUAL-LAYER CLEANING (NoiseReduce + SpeechBrain) ---
+    # --- STAGE 2: LAYER 1 - DEEPFILTERNET ---
     with st.spinner(
-        "🧹 Layer 1: Applying NoiseReduce for heavy background noise..."
+        "🧹 Layer 1: Running DeepFilterNet for heavy noise suppression..."
     ):
       try:
-        data, rate = sf.read(raw_path)
-        if data.ndim > 1:
-          data = np.mean(data, axis=1)
-
-        step1_data = nr.reduce_noise(
-            y=data.astype(np.float32), sr=rate, prop_decrease=0.85
-        )
-        sf.write(step1_path, step1_data, rate)
+        if HAS_DEEPFILTER and df_model is not None and df_state is not None:
+          audio_tensor, _ = load_audio(raw_path, sr=df_state.sr())
+          enhanced_df = enhance(df_model, df_state, audio_tensor)
+          save_audio(step1_path, enhanced_df, df_state.sr())
+        else:
+          step1_path = raw_path
+          st.warning("DeepFilterNet skipped, using raw audio.")
       except Exception as e:
         st.error(f"Layer 1 Error: {e}")
         step1_path = raw_path
 
+    # --- STAGE 3: LAYER 2 - SPEECHBRAIN ---
     with st.spinner(
-        "🧠 Layer 2: Running SpeechBrain AI for voice enhancement..."
+        "🧠 Layer 2: Running SpeechBrain for voice clarity & enhancement..."
     ):
       try:
         if HAS_SPEECHBRAIN and sb_enhancer is not None:
           enhanced_speech = sb_enhancer.enhance_file(step1_path)
           enhanced_np = enhanced_speech.squeeze(0).cpu().numpy()
           sf.write(cleaned_path, enhanced_np, 16000)
-          st.success("✨ Dual-Layer AI Processing Completed Successfully!")
+          st.success("✨ Dual-Layer AI Cleaning Completed Successfully!")
         else:
           cleaned_path = step1_path
-          st.warning(
-              "SpeechBrain not found/loaded. Using Layer-1 NoiseReduce output."
-          )
+          st.warning("SpeechBrain skipped, using Layer 1 output.")
 
         st.markdown("### 🎧 Fully Polished Audio (After Dual-Layer)")
         st.audio(cleaned_path, format="audio/wav")
       except Exception as e:
-        st.error(f"Layer 2 Cleaning Error: {e}")
+        st.error(f"Layer 2 Error: {e}")
         cleaned_path = step1_path
 
-    # --- STAGE 3: TRANSCRIBE CLEANED AUDIO (AFTER) ---
+    # --- STAGE 4: TRANSCRIBE CLEANED AUDIO WITH PROMPT (AFTER) ---
     with st.spinner(
-        "🤖 Transcribing Cleaned Audio (After Dual-Layer Result)..."
+        "🤖 Transcribing Cleaned Audio with Order-Booking Context Prompt..."
     ):
       try:
-        cleaned_result = model.transcribe(
-            cleaned_path, language="en", fp16=False
+        order_context_prompt = (
+            "This is a food or item order-booking conversation. Please"
+            " transcribe the customer's order, quantities, and items"
+            " accurately, ignoring any background noise, static, or irrelevant"
+            " chatter."
+        )
+
+        cleaned_result = whisper_model.transcribe(
+            cleaned_path,
+            language="en",
+            fp16=False,
+            initial_prompt=order_context_prompt,
         )
         cleaned_transcript = cleaned_result["text"].strip()
       except Exception as e:
         st.error(f"Whisper Error on Cleaned Audio: {e}")
         cleaned_transcript = "Error generating transcript."
 
-    # --- STAGE 4: COMPARISON DISPLAY ---
+    # --- STAGE 5: COMPARISON DISPLAY ---
     st.markdown("---")
     st.subheader("📊 Comparison of Transcriptions")
 
@@ -161,7 +195,7 @@ if audio_file is not None:
       )
 
     with col2:
-      st.markdown("#### ✅ After (Dual-Layer Cleaned)")
+      st.markdown("#### ✅ After (Dual-Layer + Smart Prompt)")
       st.text_area(
           "Transcript from Cleaned Audio:",
           value=cleaned_transcript,
@@ -170,7 +204,7 @@ if audio_file is not None:
       )
 
     st.info(
-        "💡 **Analysis Tip:** Compare both texts. The 'After' box should display"
-        " cleaner text with accurate order-booking terms even with background"
-        " noise present."
+        "💡 **Analysis Tip:** The 'After' text now leverages both physical"
+        " noise reduction layers and semantic prompting for optimal"
+        " order-booking accuracy."
     )
