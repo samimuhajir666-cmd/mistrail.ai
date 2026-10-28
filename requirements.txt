@@ -6,3 +6,7 @@ openai-whisper
 torch
 torchaudio
 speechbrain
+librosa
+pandas
+deepfilternet
+pyannote.audio
