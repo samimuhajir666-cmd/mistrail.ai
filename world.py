@@ -206,7 +206,7 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
             )
 
 # ====================================================
-# MODE 2: Pure Pyannote Speaker Classification (Independent)
+# MODE 2: Pure Pyannote Speaker Classification
 # ====================================================
 elif app_mode == "🗣️ Speaker Classification (Pyannote)":
     st.title("🗣️ Multi-Speaker Classification (Pyannote Diarization)")
@@ -214,91 +214,104 @@ elif app_mode == "🗣️ Speaker Classification (Pyannote)":
         "Upload audio to see WHO spoke WHEN. (Completely independent tool)"
     )
 
-    # Token Input in Sidebar
+    # Secure Token Retrieval Strategy
+    HF_TOKEN = os.getenv("HF_TOKEN")
+    
+    if "HF_TOKEN" in st.secrets:
+        HF_TOKEN = st.secrets["HF_TOKEN"]
+
     with st.sidebar:
         st.header("🔑 Pyannote Auth")
-        HF_TOKEN = os.getenv("HF_TOKEN") or st.text_input(
-            "Hugging Face Token:", type="password"
-        )
-        st.markdown("[Get Token Here](https://huggingface.co/settings/tokens)")
+        if not HF_TOKEN:
+            HF_TOKEN = st.text_input("Hugging Face Token:", type="password")
+        else:
+            st.success("HF Token detected automatically! ✅")
+        st.markdown("[Get Token Here](https://huggingface.co)")
 
-    if HF_TOKEN:
+    if not HF_TOKEN:
+        st.info("👈 Please enter or configure your Hugging Face Token in the sidebar settings.")
+        st.stop()
 
-        @st.cache_resource
-        def load_pyannote_pipeline(token):
-            try:
-                return Pipeline.from_pretrained(
-                    "pyannote/speaker-diarization-3.1", token=token
-                )
-            except Exception as e:
-                st.error(f"Pipeline load error: {e}")
-                return None
+    # We set token to os.environ so the function signature remains constant for caching stability
+    os.environ["HF_TOKEN"] = HF_TOKEN
 
-        pipeline = load_pyannote_pipeline(HF_TOKEN)
-
-        if pipeline is not None:
-            uploaded_file = st.file_uploader(
-                "Upload Audio File (.wav, .mp3)", type=["wav", "mp3"]
+    @st.cache_resource
+    def load_pyannote_pipeline():
+        try:
+            return Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1", use_auth_token=os.environ["HF_TOKEN"]
             )
-            num_speakers = st.number_input(
-                "Expected Speakers (0 = Auto-detect)",
-                min_value=0,
-                max_value=10,
-                value=0,
-            )
+        except Exception as e:
+            st.error(f"Pipeline initialization failed: {e}")
+            return None
 
-            if uploaded_file is not None:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                temp_upload_path = f"temp_upload_{timestamp}.wav"
-                temp_wav_path = f"temp_audio_{timestamp}.wav"
+    with st.spinner("Loading Pyannote Pipeline..."):
+        pipeline = load_pyannote_pipeline()
 
-                with open(temp_upload_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+    if pipeline is None:
+        st.error("Could not load the Pyannote pipeline. Verify you accepted both the speaker-diarization and segmentation model terms on HF.")
+        st.stop()
 
-                st.markdown("### 🔊 Original Audio")
-                st.audio(temp_upload_path, format="audio/wav")
-
-                if st.button("Process & Classify Audio 🚀", type="primary"):
-                    with st.spinner("AI Aawazein alag alag kar raha hai... Please wait..."):
-                        try:
-                            y, sr = librosa.load(temp_upload_path, sr=16000)
-                            sf.write(temp_wav_path, y, sr)
-
-                            if num_speakers > 0:
-                                diarization = pipeline(
-                                    temp_wav_path, num_speakers=num_speakers
-                                )
-                            else:
-                                diarization = pipeline(temp_wav_path)
-
-                            st.success("Classification Complete! 🎉")
-                            st.markdown("---")
-                            st.subheader("📊 Speaker Timeline Results")
-
-                            results_data = []
-                            for turn, _, speaker in diarization.itertracks(yield_label=True):
-                                results_data.append({
-                                    "Start Time": f"{turn.start:.2f}s",
-                                    "End Time": f"{turn.end:.2f}s",
-                                    "Duration": f"{turn.end - turn.start:.2f}s",
-                                    "Speaker": speaker,
-                                })
-
-                            if results_data:
-                                df = pd.DataFrame(results_data)
-                                st.dataframe(df, use_container_width=True)
-                                st.info(
-                                    f"🗣️ Total {df['Speaker'].nunique()} speakers detected."
-                                )
-                            else:
-                                st.warning("No speech detected.")
-
-                        except Exception as e:
-                            st.error(f"Processing Error: {e}")
-                        finally:
-                            if os.path.exists(temp_upload_path):
-                                os.remove(temp_upload_path)
-                            if os.path.exists(temp_wav_path):
-                                os.remove(temp_wav_path)
-    else:
-        st.info("👈 Please enter your Hugging Face Token in the sidebar.")
+    uploaded_file = st.file_uploader(
+        "Upload Audio File (.wav, .mp3)", type=["wav", "mp3"]
+    )
+    
+    num_speakers = st.number_input(
+        "Expected Speakers (0 = Auto-detect)",
+        min_value=0,
+        max_value=10,
+        value=0,
+    )
+    
+    if uploaded_file is not None:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        temp_upload_path = f"temp_upload_{timestamp}.wav"
+        temp_wav_path = f"temp_audio_{timestamp}.wav"
+        
+        with open(temp_upload_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+            
+        st.markdown("### 🔊 Original Audio")
+        st.audio(temp_upload_path, format="audio/wav")
+        
+        if st.button("Process & Classify Audio 🚀", type="primary"):
+            with st.spinner("AI Aawazein alag alag kar raha hai... Please wait..."):
+                try:
+                    # Clean and uniform resample to 16kHz before hitting pipeline
+                    y, sr = librosa.load(temp_upload_path, sr=16000)
+                    sf.write(temp_wav_path, y, sr)
+                    
+                    # Explicit execution via proper file path maps
+                    if num_speakers > 0:
+                        diarization = pipeline(temp_wav_path, num_speakers=num_speakers)
+                    else:
+                        diarization = pipeline(temp_wav_path)
+                        
+                    st.success("Classification Complete! 🎉")
+                    st.markdown("---")
+                    st.subheader("📊 Speaker Timeline Results")
+                    
+                    results_data = []
+                    for turn, _, speaker in diarization.itertracks(yield_label=True):
+                        results_data.append({
+                            "Start Time": f"{turn.start:.2f}s",
+                            "End Time": f"{turn.end:.2f}s",
+                            "Duration": f"{turn.end - turn.start:.2f}s",
+                            "Speaker": speaker,
+                        })
+                        
+                    if results_data:
+                        df = pd.DataFrame(results_data)
+                        st.dataframe(df, use_container_width=True)
+                        st.info(f"🗣️ Total {df['Speaker'].nunique()} speakers detected.")
+                    else:
+                        st.warning("No speech segments detected.")
+                        
+                except Exception as e:
+                    st.error(f"Processing Error: {e}")
+                    
+                finally:
+                    if os.path.exists(temp_upload_path):
+                        os.remove(temp_upload_path)
+                    if os.path.exists(temp_wav_path):
+                        os.remove(temp_wav_path)
