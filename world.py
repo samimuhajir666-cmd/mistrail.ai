@@ -238,8 +238,9 @@ elif app_mode == "🗣️ Speaker Classification (Pyannote)":
     @st.cache_resource
     def load_pyannote_pipeline():
         try:
+            # YAHAN TOKEN FIX KIYA GAYA HAI (use_auth_token -> token)
             return Pipeline.from_pretrained(
-                "pyannote/speaker-diarization-3.1", use_auth_token=os.environ["HF_TOKEN"]
+                "pyannote/speaker-diarization-3.1", token=os.environ["HF_TOKEN"]
             )
         except Exception as e:
             st.error(f"Pipeline initialization failed: {e}")
