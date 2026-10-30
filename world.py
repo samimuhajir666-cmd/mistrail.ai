@@ -40,7 +40,7 @@ app_mode = st.sidebar.radio(
     "Choose Tool Mode:",
     [
         "🎙️ Enhancement & Whisper STT",
-        "🗣️ Speaker Classification (Pyannote)",
+        "🗣️ Speaker Diarization + STT (Merged)",
     ],
 )
 
@@ -82,7 +82,7 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
                 return None, None
         return None, None
 
-    with st.spinner("⏳ Loading AI models into memory (DeepFilter + SpeechBrain + Whisper)..."):
+    with st.spinner("⏳ Loading AI models into memory..."):
         whisper_model = load_whisper_model()
         df_model, df_state = load_deepfilter_model()
         sb_enhancer = load_speechbrain_enhancer()
@@ -93,13 +93,9 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
     audio_file = None
 
     if input_method == "🔴 Live Record Audio":
-        audio_file = st.audio_input(
-            "Record your English order-booking paragraph with background noise:"
-        )
+        audio_file = st.audio_input("Record your English order-booking paragraph:")
     else:
-        audio_file = st.file_uploader(
-            "Upload noisy English audio file:", type=["wav", "mp3", "m4a"]
-        )
+        audio_file = st.file_uploader("Upload noisy English audio file:", type=["wav", "mp3", "m4a"])
 
     if audio_file is not None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -117,13 +113,11 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
             # --- STAGE 1: TRANSCRIBE ORIGINAL ---
             with st.spinner("🤖 Transcribing Original Noisy Audio..."):
                 try:
-                    original_result = whisper_model.transcribe(
-                        raw_path, language="en", fp16=False
-                    )
+                    original_result = whisper_model.transcribe(raw_path, language="en", fp16=False)
                     original_transcript = original_result["text"].strip()
                 except Exception as e:
-                    st.error(f"Whisper Error on Original Audio: {e}")
-                    original_transcript = "Error generating transcript."
+                    st.error(f"Whisper Error: {e}")
+                    original_transcript = "Error"
 
             # --- STAGE 2: LAYER 1 - DEEPFILTERNET ---
             with st.spinner("🧹 Layer 1: Running DeepFilterNet..."):
@@ -134,7 +128,6 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
                         save_audio(step1_path, enhanced_df, df_state.sr())
                     else:
                         step1_path = raw_path
-                        st.warning("DeepFilterNet skipped, using raw audio.")
                 except Exception as e:
                     st.error(f"Layer 1 Error: {e}")
                     step1_path = raw_path
@@ -146,121 +139,77 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
                         enhanced_speech = sb_enhancer.enhance_file(step1_path)
                         enhanced_np = enhanced_speech.squeeze(0).cpu().numpy()
                         sf.write(cleaned_path, enhanced_np, 16000)
-                        st.success("✨ Dual-Layer AI Cleaning Completed Successfully!")
+                        st.success("✨ Dual-Layer AI Cleaning Completed!")
                     else:
                         cleaned_path = step1_path
-                        st.warning("SpeechBrain skipped, using Layer 1 output.")
-
-                    st.markdown("### 🎧 Fully Polished Audio (After Dual-Layer)")
+                    
+                    st.markdown("### 🎧 Fully Polished Audio")
                     st.audio(cleaned_path, format="audio/wav")
                 except Exception as e:
                     st.error(f"Layer 2 Error: {e}")
                     cleaned_path = step1_path
 
             # --- STAGE 4: TRANSCRIBE CLEANED AUDIO ---
-            with st.spinner("🤖 Transcribing Cleaned Audio with Order-Booking Context Prompt..."):
+            with st.spinner("🤖 Transcribing Cleaned Audio..."):
                 try:
-                    order_context_prompt = (
-                        "This is a food or item order-booking conversation. Please "
-                        "transcribe the customer's order, quantities, and items "
-                        "accurately, ignoring any background noise, static, or "
-                        "irrelevant chatter."
-                    )
-                    cleaned_result = whisper_model.transcribe(
-                        cleaned_path,
-                        language="en",
-                        fp16=False,
-                        initial_prompt=order_context_prompt,
-                    )
+                    order_context_prompt = "This is a food order conversation. Transcribe accurately."
+                    cleaned_result = whisper_model.transcribe(cleaned_path, language="en", fp16=False, initial_prompt=order_context_prompt)
                     cleaned_transcript = cleaned_result["text"].strip()
                 except Exception as e:
-                    st.error(f"Whisper Error on Cleaned Audio: {e}")
-                    cleaned_transcript = "Error generating transcript."
+                    st.error(f"Whisper Error: {e}")
+                    cleaned_transcript = "Error"
 
-            # --- STAGE 5: COMPARISON DISPLAY ---
+            # --- STAGE 5: COMPARISON ---
             st.markdown("---")
             st.subheader("📊 Comparison of Transcriptions")
             col1, col2 = st.columns(2)
-
             with col1:
-                st.markdown("#### ❌ Before (Raw Noisy Audio)")
-                st.text_area(
-                    "Transcript from Noisy Audio:",
-                    value=original_transcript,
-                    height=200,
-                    key=f"orig_text_{timestamp}",
-                )
-
+                st.markdown("#### ❌ Before")
+                st.text_area("Noisy Transcript:", value=original_transcript, height=150)
             with col2:
-                st.markdown("#### ✅ After (Dual-Layer + Smart Prompt)")
-                st.text_area(
-                    "Transcript from Cleaned Audio:",
-                    value=cleaned_transcript,
-                    height=200,
-                    key=f"clean_text_{timestamp}",
-                )
+                st.markdown("#### ✅ After")
+                st.text_area("Cleaned Transcript:", value=cleaned_transcript, height=150)
 
-            st.info(
-                "💡 **Analysis Tip:** The 'After' text now leverages both physical "
-                "noise reduction layers and semantic prompting for optimal accuracy."
-            )
 
 # ====================================================
-# MODE 2: Pure Pyannote Speaker Classification
+# MODE 2: Merged Diarization + STT
 # ====================================================
-elif app_mode == "🗣️ Speaker Classification (Pyannote)":
-    st.title("🗣️ Multi-Speaker Classification (Pyannote Diarization)")
-    st.write(
-        "Upload audio to see WHO spoke WHEN. (Completely independent tool)"
-    )
+elif app_mode == "🗣️ Speaker Diarization + STT (Merged)":
+    st.title("🗣️ Speaker-Attributed Transcript (Pyannote + Whisper)")
+    st.write("Identifies WHO spoke WHEN and merges it with the transcribed TEXT.")
 
-    # Secure Token Retrieval Strategy
+    # Token Logic
     HF_TOKEN = os.getenv("HF_TOKEN")
-    
     if "HF_TOKEN" in st.secrets:
         HF_TOKEN = st.secrets["HF_TOKEN"]
-
-    with st.sidebar:
-        st.header("🔑 Pyannote Auth")
-        if not HF_TOKEN:
-            HF_TOKEN = st.text_input("Hugging Face Token:", type="password")
-        else:
-            st.success("HF Token detected automatically! ✅")
-        st.markdown("[Get Token Here](https://huggingface.co)")
-
     if not HF_TOKEN:
-        st.info("👈 Please enter or configure your Hugging Face Token in the sidebar settings.")
-        st.stop()
+        HF_TOKEN = "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" # Fallback token
 
     os.environ["HF_TOKEN"] = HF_TOKEN
 
     @st.cache_resource
+    def load_whisper_model():
+        return whisper.load_model("base")
+
+    @st.cache_resource
     def load_pyannote_pipeline():
         try:
-            return Pipeline.from_pretrained(
-                "pyannote/speaker-diarization-3.1", token=os.environ["HF_TOKEN"]
-            )
+            # Pyannote 3.x/4.x token handling
+            return Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=os.environ["HF_TOKEN"])
         except Exception as e:
-            st.error(f"Pipeline initialization failed: {e}")
+            st.error(f"Pipeline Load Error: {e}")
             return None
 
-    with st.spinner("Loading Pyannote Pipeline..."):
+    with st.spinner("⏳ Loading AI models (Whisper + Pyannote)..."):
+        whisper_model = load_whisper_model()
         pipeline = load_pyannote_pipeline()
 
     if pipeline is None:
-        st.error("Could not load the Pyannote pipeline. Verify you accepted both the speaker-diarization and segmentation model terms on HF.")
+        st.error("Could not load Pyannote pipeline. Check token & accepted terms.")
         st.stop()
 
-    uploaded_file = st.file_uploader(
-        "Upload Audio File (.wav, .mp3)", type=["wav", "mp3"]
-    )
-    
-    num_speakers = st.number_input(
-        "Expected Speakers (0 = Auto-detect)",
-        min_value=0,
-        max_value=10,
-        value=0,
-    )
+    uploaded_file = st.file_uploader("Upload Audio File (.wav, .mp3)", type=["wav", "mp3"])
+    num_speakers = st.number_input("Expected Speakers (0 = Auto-detect)", min_value=0, max_value=10, value=0)
     
     if uploaded_file is not None:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -273,43 +222,99 @@ elif app_mode == "🗣️ Speaker Classification (Pyannote)":
         st.markdown("### 🔊 Original Audio")
         st.audio(temp_upload_path, format="audio/wav")
         
-        if st.button("Process & Classify Audio 🚀", type="primary"):
-            with st.spinner("AI Aawazein alag alag kar raha hai... Please wait..."):
+        if st.button("Process & Merge Audio 🚀", type="primary"):
+            with st.spinner("Step 1: Running Pyannote Diarization..."):
                 try:
                     y, sr = librosa.load(temp_upload_path, sr=16000)
                     sf.write(temp_wav_path, y, sr)
                     
                     if num_speakers > 0:
-                        diarization = pipeline(temp_wav_path, num_speakers=num_speakers)
+                        diarization_output = pipeline(temp_wav_path, num_speakers=num_speakers)
                     else:
-                        diarization = pipeline(temp_wav_path)
+                        diarization_output = pipeline(temp_wav_path)
                         
-                    st.success("Classification Complete! 🎉")
-                    st.markdown("---")
-                    st.subheader("📊 Speaker Timeline Results")
-                    
-                    results_data = []
-                    # --- FIXED LINE BELOW (.annotation added) ---
-                    for turn, _, speaker in diarization.annotation.itertracks(yield_label=True):
-                        results_data.append({
-                            "Start Time": f"{turn.start:.2f}s",
-                            "End Time": f"{turn.end:.2f}s",
-                            "Duration": f"{turn.end - turn.start:.2f}s",
-                            "Speaker": speaker,
+                    # ==========================================
+                    # THE FIX: Handle Pyannote 4.x DiarizeOutput
+                    # ==========================================
+                    if hasattr(diarization_output, "speaker_diarization"):
+                        # Pyannote 4.x returns DiarizeOutput wrapper
+                        annotation = diarization_output.speaker_diarization
+                    else:
+                        # Pyannote 3.x returns Annotation directly
+                        annotation = diarization_output
+                        
+                    # Now safely extract segments
+                    diarization_segments = []
+                    for turn, _, speaker in annotation.itertracks(yield_label=True):
+                        diarization_segments.append({
+                            "start": turn.start,
+                            "end": turn.end,
+                            "speaker": speaker
                         })
-                        
-                    if results_data:
-                        df = pd.DataFrame(results_data)
-                        st.dataframe(df, use_container_width=True)
-                        st.info(f"🗣️ Total {df['Speaker'].nunique()} speakers detected.")
-                    else:
-                        st.warning("No speech segments detected.")
-                        
-                except Exception as e:
-                    st.error(f"Processing Error: {e}")
+                    diarization_segments = sorted(diarization_segments, key=lambda x: x["start"])
                     
-                finally:
-                    if os.path.exists(temp_upload_path):
-                        os.remove(temp_upload_path)
-                    if os.path.exists(temp_wav_path):
-                        os.remove(temp_wav_path)
+                except Exception as e:
+                    st.error(f"Pyannote Error: {e}")
+                    st.stop()
+
+            with st.spinner("Step 2: Running Whisper Transcription..."):
+                try:
+                    whisper_result = whisper_model.transcribe(temp_wav_path, language="en", fp16=False)
+                    transcript_segments = whisper_result.get("segments", [])
+                except Exception as e:
+                    st.error(f"Whisper Error: {e}")
+                    st.stop()
+
+            with st.spinner("Step 3: Merging Diarization & STT Results..."):
+                # Merge Logic
+                fill_nearest = False
+                merged_results = []
+                
+                for seg in transcript_segments:
+                    seg_start = seg.get("start", 0.0)
+                    seg_end = seg.get("end", 0.0)
+                    speaker_overlap = {}
+                    
+                    for dia in diarization_segments:
+                        intersection = min(dia["end"], seg_end) - max(dia["start"], seg_start)
+                        if intersection <= 0:
+                            continue
+                        speaker = dia["speaker"]
+                        speaker_overlap[speaker] = speaker_overlap.get(speaker, 0.0) + intersection
+                        
+                    if speaker_overlap:
+                        assigned_speaker = max(speaker_overlap.items(), key=lambda x: x[1])[0]
+                    elif fill_nearest and diarization_segments:
+                        midpoint = (seg_start + seg_end) / 2
+                        nearest = min(diarization_segments, key=lambda x: abs(((x["start"] + x["end"]) / 2) - midpoint))
+                        assigned_speaker = nearest["speaker"]
+                    else:
+                        assigned_speaker = "UNKNOWN"
+                        
+                    start_str = f"{int(seg_start//60):02d}:{int(seg_start%60):02d}"
+                    end_str = f"{int(seg_end//60):02d}:{int(seg_end%60):02d}"
+                    
+                    merged_results.append({
+                        "Time": f"{start_str} - {end_str}",
+                        "Speaker": assigned_speaker,
+                        "Text": seg["text"].strip()
+                    })
+
+                # --- DISPLAY RESULTS ---
+                st.success("Merging Complete! 🎉")
+                st.markdown("---")
+                st.subheader("📊 Speaker-Attributed Transcript")
+                
+                if merged_results:
+                    df = pd.DataFrame(merged_results)
+                    st.dataframe(df, use_container_width=True)
+                    
+                    st.markdown("### 📝 Detailed View")
+                    for row in merged_results:
+                        st.markdown(f"**[{row['Time']}] {row['Speaker']}:** {row['Text']}")
+                else:
+                    st.warning("No speech segments found to merge.")
+
+            # Cleanup
+            if os.path.exists(temp_upload_path): os.remove(temp_upload_path)
+            if os.path.exists(temp_wav_path): os.remove(temp_wav_path)
