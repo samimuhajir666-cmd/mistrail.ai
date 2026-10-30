@@ -177,7 +177,7 @@ elif app_mode == "🗣️ Speaker Diarization (FunASR)":
     st.write("Identifies WHO spoke WHEN using Alibaba's FunASR. No Hugging Face token required.")
 
     if not HAS_FUNASR:
-        st.error("FunASR is not installed. Please check requirements.txt and Python version (3.11).")
+        st.error("FunASR is not installed. Please check requirements.txt and Python version (must be 3.11).")
         st.stop()
 
     @st.cache_resource
@@ -267,7 +267,7 @@ elif app_mode == "🗣️ Speaker Diarization (FunASR)":
                 for row in results_data:
                     st.markdown(f"**[{row['Time']}] {row['Speaker']}:** {row['Text']}")
             else:
-                st.warning("No speech segments found. Check the audio or FunASR output.")
+                st.warning("No speech segments found. Check the audio.")
 
             if os.path.exists(temp_upload_path): os.remove(temp_upload_path)
             if os.path.exists(temp_wav_path): os.remove(temp_wav_path)
