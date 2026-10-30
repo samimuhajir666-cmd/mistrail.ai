@@ -178,12 +178,15 @@ elif app_mode == "🗣️ Speaker Diarization + STT (Merged)":
     st.title("🗣️ Speaker-Attributed Transcript (Pyannote + Whisper)")
     st.write("Identifies WHO spoke WHEN and merges it with the transcribed TEXT.")
 
-    # Token Logic
+    # Token Logic (Streamlit Secrets ya .env se)
     HF_TOKEN = os.getenv("HF_TOKEN")
     if "HF_TOKEN" in st.secrets:
         HF_TOKEN = st.secrets["HF_TOKEN"]
+    
     if not HF_TOKEN:
-        HF_TOKEN = "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" # Fallback token
+        st.error("⚠️ **Hugging Face Token Missing!**")
+        st.info("Please add your token in Streamlit Cloud > Settings > Secrets as `HF_TOKEN = \"hf_...\"`")
+        st.stop()
 
     os.environ["HF_TOKEN"] = HF_TOKEN
 
@@ -194,8 +197,11 @@ elif app_mode == "🗣️ Speaker Diarization + STT (Merged)":
     @st.cache_resource
     def load_pyannote_pipeline():
         try:
-            # Pyannote 3.x/4.x token handling
-            return Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", token=os.environ["HF_TOKEN"])
+            # Pyannote 4.x ke liye 'token' parameter use karein
+            return Pipeline.from_pretrained(
+                "pyannote/speaker-diarization-3.1", 
+                token=os.environ["HF_TOKEN"]
+            )
         except Exception as e:
             st.error(f"Pipeline Load Error: {e}")
             return None
@@ -234,16 +240,15 @@ elif app_mode == "🗣️ Speaker Diarization + STT (Merged)":
                         diarization_output = pipeline(temp_wav_path)
                         
                     # ==========================================
-                    # THE FIX: Handle Pyannote 4.x DiarizeOutput
+                    # FIX: Handle Pyannote 4.x DiarizeOutput
                     # ==========================================
-                    if hasattr(diarization_output, "speaker_diarization"):
-                        # Pyannote 4.x returns DiarizeOutput wrapper
+                    if hasattr(diarization_output, "exclusive_speaker_diarization"):
+                        annotation = diarization_output.exclusive_speaker_diarization
+                    elif hasattr(diarization_output, "speaker_diarization"):
                         annotation = diarization_output.speaker_diarization
                     else:
-                        # Pyannote 3.x returns Annotation directly
                         annotation = diarization_output
                         
-                    # Now safely extract segments
                     diarization_segments = []
                     for turn, _, speaker in annotation.itertracks(yield_label=True):
                         diarization_segments.append({
