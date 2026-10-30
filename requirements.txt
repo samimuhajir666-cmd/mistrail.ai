@@ -1,11 +1,11 @@
-streamlit
-torch
-torchaudio
+streamlit==1.43.2
+torch==2.2.0
+torchaudio==2.2.0
 openai-whisper
 librosa
 pandas
 soundfile
 deepfilternet
 speechbrain
-funasr
-modelscope
+funasr==1.2.6
+modelscope>=1.23.1
