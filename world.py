@@ -10,21 +10,6 @@ import torch
 import torchaudio
 import whisper
 
-# Try importing DeepFilterNet safely
-try:
-    from df.enhance import enhance, init_df
-    from df.io import load_audio, save_audio
-    HAS_DEEPFILTER = True
-except ImportError:
-    HAS_DEEPFILTER = False
-
-# Try importing SpeechBrain safely
-try:
-    from speechbrain.inference.enhancement import SpectralMaskEnhancement
-    HAS_SPEECHBRAIN = True
-except ImportError:
-    HAS_SPEECHBRAIN = False
-
 # Page Configuration
 st.set_page_config(
     page_title="AI Audio Studio",
@@ -61,26 +46,24 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
 
     @st.cache_resource
     def load_deepfilter_model():
-        if HAS_DEEPFILTER:
-            try:
-                model, df_state, _ = init_df()
-                return model, df_state
-            except Exception as e:
-                st.warning(f"Could not load DeepFilterNet model: {e}")
-                return None, None
-        return None, None
+        try:
+            from df.enhance import init_df
+            model, df_state, _ = init_df()
+            return model, df_state
+        except Exception as e:
+            st.warning(f"Could not load DeepFilterNet model: {e}")
+            return None, None
 
     @st.cache_resource
     def load_speechbrain_enhancer():
-        if HAS_SPEECHBRAIN:
-            try:
-                return SpectralMaskEnhancement.from_hparams(
-                    source="speechbrain/metricgan-plus-voicebank"
-                )
-            except Exception as e:
-                st.warning(f"Could not load SpeechBrain model: {e}")
-                return None, None
-        return None, None
+        try:
+            from speechbrain.inference.enhancement import SpectralMaskEnhancement
+            return SpectralMaskEnhancement.from_hparams(
+                source="speechbrain/metricgan-plus-voicebank"
+            )
+        except Exception as e:
+            st.warning(f"Could not load SpeechBrain model: {e}")
+            return None
 
     with st.spinner("⏳ Loading AI models into memory..."):
         whisper_model = load_whisper_model()
@@ -122,7 +105,9 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
             # --- STAGE 2: LAYER 1 - DEEPFILTERNET ---
             with st.spinner("🧹 Layer 1: Running DeepFilterNet..."):
                 try:
-                    if HAS_DEEPFILTER and df_model is not None and df_state is not None:
+                    if df_model is not None and df_state is not None:
+                        from df.enhance import enhance
+                        from df.io import load_audio, save_audio
                         audio_tensor, _ = load_audio(raw_path, sr=df_state.sr())
                         enhanced_df = enhance(df_model, df_state, audio_tensor)
                         save_audio(step1_path, enhanced_df, df_state.sr())
@@ -135,7 +120,7 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
             # --- STAGE 3: LAYER 2 - SPEECHBRAIN ---
             with st.spinner("🧠 Layer 2: Running SpeechBrain..."):
                 try:
-                    if HAS_SPEECHBRAIN and sb_enhancer is not None:
+                    if sb_enhancer is not None:
                         enhanced_speech = sb_enhancer.enhance_file(step1_path)
                         enhanced_np = enhanced_speech.squeeze(0).cpu().numpy()
                         sf.write(cleaned_path, enhanced_np, 16000)
@@ -239,9 +224,7 @@ elif app_mode == "🗣️ Speaker Diarization + STT (Merged)":
                     else:
                         diarization_output = pipeline(temp_wav_path)
                         
-                    # ==========================================
-                    # FIX: Handle Pyannote 4.x DiarizeOutput
-                    # ==========================================
+                    # Handle Pyannote 4.x DiarizeOutput
                     if hasattr(diarization_output, "exclusive_speaker_diarization"):
                         annotation = diarization_output.exclusive_speaker_diarization
                     elif hasattr(diarization_output, "speaker_diarization"):
@@ -271,7 +254,6 @@ elif app_mode == "🗣️ Speaker Diarization + STT (Merged)":
                     st.stop()
 
             with st.spinner("Step 3: Merging Diarization & STT Results..."):
-                # Merge Logic
                 fill_nearest = False
                 merged_results = []
                 
@@ -305,7 +287,6 @@ elif app_mode == "🗣️ Speaker Diarization + STT (Merged)":
                         "Text": seg["text"].strip()
                     })
 
-                # --- DISPLAY RESULTS ---
                 st.success("Merging Complete! 🎉")
                 st.markdown("---")
                 st.subheader("📊 Speaker-Attributed Transcript")
@@ -320,6 +301,5 @@ elif app_mode == "🗣️ Speaker Diarization + STT (Merged)":
                 else:
                     st.warning("No speech segments found to merge.")
 
-            # Cleanup
             if os.path.exists(temp_upload_path): os.remove(temp_upload_path)
             if os.path.exists(temp_wav_path): os.remove(temp_wav_path)
