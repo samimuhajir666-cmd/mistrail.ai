@@ -1,10 +1,9 @@
-streamlit
+streamlit>=1.32.0
+torch>=2.0.0
+torchaudio>=2.0.0
 openai-whisper
-torch
-torchaudio
-soundfile
 librosa
+soundfile
 pandas
 numpy
-speechbrain
-pyannote.audio
+pyannote.audio>=3.1.1
