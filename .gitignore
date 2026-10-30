@@ -1,12 +1,5 @@
-venv/
-env/
-.venv/
-__pycache__/
-*.py[cod]
-pipeline_output/
-*.wav
-*.mp3
 .env
-.vscode/
-.idea/
-.DS_Store
+__pycache__/
+*.pyc
+pipeline_output/
+temp_*.wav
