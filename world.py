@@ -232,13 +232,11 @@ elif app_mode == "🗣️ Speaker Classification (Pyannote)":
         st.info("👈 Please enter or configure your Hugging Face Token in the sidebar settings.")
         st.stop()
 
-    # We set token to os.environ so the function signature remains constant for caching stability
     os.environ["HF_TOKEN"] = HF_TOKEN
 
     @st.cache_resource
     def load_pyannote_pipeline():
         try:
-            # YAHAN TOKEN FIX KIYA GAYA HAI (use_auth_token -> token)
             return Pipeline.from_pretrained(
                 "pyannote/speaker-diarization-3.1", token=os.environ["HF_TOKEN"]
             )
@@ -278,11 +276,9 @@ elif app_mode == "🗣️ Speaker Classification (Pyannote)":
         if st.button("Process & Classify Audio 🚀", type="primary"):
             with st.spinner("AI Aawazein alag alag kar raha hai... Please wait..."):
                 try:
-                    # Clean and uniform resample to 16kHz before hitting pipeline
                     y, sr = librosa.load(temp_upload_path, sr=16000)
                     sf.write(temp_wav_path, y, sr)
                     
-                    # Explicit execution via proper file path maps
                     if num_speakers > 0:
                         diarization = pipeline(temp_wav_path, num_speakers=num_speakers)
                     else:
@@ -293,7 +289,8 @@ elif app_mode == "🗣️ Speaker Classification (Pyannote)":
                     st.subheader("📊 Speaker Timeline Results")
                     
                     results_data = []
-                    for turn, _, speaker in diarization.itertracks(yield_label=True):
+                    # --- FIXED LINE BELOW (.annotation added) ---
+                    for turn, _, speaker in diarization.annotation.itertracks(yield_label=True):
                         results_data.append({
                             "Start Time": f"{turn.start:.2f}s",
                             "End Time": f"{turn.end:.2f}s",
