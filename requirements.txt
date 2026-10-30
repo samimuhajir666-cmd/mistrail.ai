@@ -1,10 +1,12 @@
-streamlit
-pyannote.audio>=3.1.0
-torch>=2.0.0
-torchaudio>=2.0.0
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.2.2+cpu
+torchaudio==2.2.2+cpu
+streamlit>=1.30.0
+pyannote.audio==3.1.0
 openai-whisper
+deepfilternet
+speechbrain
 librosa
 pandas
 soundfile
-deepfilternet
-speechbrain
+protobuf>=5.0.0
