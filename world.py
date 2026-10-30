@@ -56,9 +56,7 @@ app_mode = st.sidebar.radio(
 # ====================================================
 if app_mode == "🎙️ Enhancement & Whisper STT":
     st.title("🎙️ Dual-Layer AI Pipeline + Context-Aware Whisper STT")
-    st.write(
-        "DeepFilterNet (Noise Suppression) ➔ SpeechBrain (Enhancement) ➔ Smart Whisper STT"
-    )
+    st.write("DeepFilterNet (Noise Suppression) ➔ SpeechBrain (Enhancement) ➔ Smart Whisper STT")
 
     os.makedirs("pipeline_output", exist_ok=True)
 
@@ -94,9 +92,7 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
         df_model, df_state = load_deepfilter_model()
         sb_enhancer = load_speechbrain_enhancer()
 
-    input_method = st.radio(
-        "Choose Input Method:", ["🔴 Live Record Audio", "📂 Upload Audio File"]
-    )
+    input_method = st.radio("Choose Input Method:", ["🔴 Live Record Audio", "📂 Upload Audio File"])
     audio_file = None
 
     if input_method == "🔴 Live Record Audio":
@@ -117,7 +113,6 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
         st.audio(raw_path, format="audio/wav")
 
         if st.button("🚀 Run Complete AI Pipeline"):
-            # --- STAGE 1: TRANSCRIBE ORIGINAL ---
             with st.spinner("🤖 Transcribing Original Noisy Audio..."):
                 try:
                     original_result = whisper_model.transcribe(raw_path, language="en", fp16=False)
@@ -126,7 +121,6 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
                     st.error(f"Whisper Error: {e}")
                     original_transcript = "Error"
 
-            # --- STAGE 2: LAYER 1 - DEEPFILTERNET ---
             with st.spinner("🧹 Layer 1: Running DeepFilterNet..."):
                 try:
                     if HAS_DEEPFILTER and df_model is not None and df_state is not None:
@@ -139,7 +133,6 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
                     st.error(f"Layer 1 Error: {e}")
                     step1_path = raw_path
 
-            # --- STAGE 3: LAYER 2 - SPEECHBRAIN ---
             with st.spinner("🧠 Layer 2: Running SpeechBrain..."):
                 try:
                     if HAS_SPEECHBRAIN and sb_enhancer is not None:
@@ -156,7 +149,6 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
                     st.error(f"Layer 2 Error: {e}")
                     cleaned_path = step1_path
 
-            # --- STAGE 4: TRANSCRIBE CLEANED AUDIO ---
             with st.spinner("🤖 Transcribing Cleaned Audio..."):
                 try:
                     order_context_prompt = "This is a food order conversation. Transcribe accurately."
@@ -166,7 +158,6 @@ if app_mode == "🎙️ Enhancement & Whisper STT":
                     st.error(f"Whisper Error: {e}")
                     cleaned_transcript = "Error"
 
-            # --- STAGE 5: COMPARISON ---
             st.markdown("---")
             st.subheader("📊 Comparison of Transcriptions")
             col1, col2 = st.columns(2)
@@ -186,14 +177,12 @@ elif app_mode == "🗣️ Speaker Diarization (FunASR)":
     st.write("Identifies WHO spoke WHEN using Alibaba's FunASR. No Hugging Face token required.")
 
     if not HAS_FUNASR:
-        st.error("FunASR is not installed. Please check requirements.txt.")
+        st.error("FunASR is not installed. Please check requirements.txt and Python version (3.11).")
         st.stop()
 
-    # Load FunASR Model (Cached)
     @st.cache_resource
     def load_funasr_model():
         try:
-            # Models: VAD (Voice Activity Detection), ASR (SenseVoice), Speaker (CAM++)
             model = AutoModel(
                 model="iic/SenseVoiceSmall",
                 vad_model="fsmn-vad",
@@ -239,7 +228,7 @@ elif app_mode == "🗣️ Speaker Diarization (FunASR)":
                     res = funasr_model.generate(
                         input=temp_wav_path,
                         cache={},
-                        language="auto", # Auto-detect language
+                        language="auto",
                         use_itn=True,
                         batch_size_s=60,
                         merge_vad=True,
@@ -249,19 +238,16 @@ elif app_mode == "🗣️ Speaker Diarization (FunASR)":
                     st.error(f"FunASR Processing Error: {e}")
                     st.stop()
 
-            # --- DISPLAY RESULTS ---
             st.success("Diarization Complete! 🎉")
             st.markdown("---")
             st.subheader("📊 Speaker-Attributed Transcript")
             
-            # Parse FunASR Output
             results_data = []
             if res and len(res) > 0 and "sentence_info" in res[0]:
                 for sent in res[0]["sentence_info"]:
                     text = rich_transcription_postprocess(sent["text"])
                     speaker = sent.get("spk", "Unknown")
                     
-                    # Format timestamps
                     start_sec = sent["start"] / 1000.0
                     end_sec = sent["end"] / 1000.0
                     start_str = f"{int(start_sec//60):02d}:{int(start_sec%60):02d}"
@@ -283,6 +269,5 @@ elif app_mode == "🗣️ Speaker Diarization (FunASR)":
             else:
                 st.warning("No speech segments found. Check the audio or FunASR output.")
 
-            # Cleanup
             if os.path.exists(temp_upload_path): os.remove(temp_upload_path)
             if os.path.exists(temp_wav_path): os.remove(temp_wav_path)
