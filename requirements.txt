@@ -1,12 +1,10 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-torch==2.2.2+cpu
-torchaudio==2.2.2+cpu
-streamlit>=1.30.0
-pyannote.audio==3.1.0
+streamlit
+pyannote.audio>=3.1.0
+torch
+torchaudio
 openai-whisper
-deepfilternet
-speechbrain
 librosa
 pandas
 soundfile
-protobuf>=5.0.0
+deepfilternet
+speechbrain
